@@ -12,25 +12,27 @@
 #include "cvdrawingutils.h"
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
-#include <pcl\PCLImage.h>
-
+#include <pcl/visualization/cloud_viewer.h>
+#include <pcl/visualization/pcl_visualizer.h>
 
 using namespace cv;
 using namespace aruco; 
 
-/*
+
+
+
 // VISUALIZZATORE PCD
 void viewerOneOff (pcl::visualization::PCLVisualizer& viewer) {
-
+	
     viewer.setBackgroundColor (1.0, 0.5, 1.0);
 	viewer.setCameraPosition(0,0,-2,0,-1,1,0);
 	viewer.resetCamera();
-	viewer.addSphere(center, 0.02, 255, 0, 0, "sphere1");
-	viewer.addSphere(center2, 0.02, 0, 255, 0, "sphere2");
-	viewer.addSphere(center3, 0.02, 0, 0, 255, "sphere3");
-	viewer.addSphere(center4, 0.02, 120, 120, 0, "sphere4");
+	/*
+	for (int i=0; i < centersA.size(); i++)
+		viewer.addSphere(centersA[i], 0.02, 255, 0, 0);*/
+
 }
-*/
+
 
 // CONVERSIONE DA PCD A IMMAGINE MAT
 cv::Mat pcd2img (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud){
@@ -48,45 +50,41 @@ cv::Mat pcd2img (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud){
 
 
 
-// RICERCA DEL PUNTO XYZ NELLA NUVOLA DATE LE COORDINATE XY DI UN VERTICE DEL MARKER
-Vector<pcl::PointXYZRGBA> getNearestPoint (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud, Vector<float> i, Vector<float> j){
+pcl::PointXYZRGBA getNearestPoint (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud, float i, float j){
 	
-	Vector<pcl::PointXYZRGBA> p;
+	int k = (cloud->width * (int)(j + 0.5) ) + (int)(i + 0.5);
+	pcl::PointXYZRGBA p = cloud->points[k];
 
-	for (int iter = 0; iter < i.size(); iter++) {
-		int k = (cloud->width * (int)(j[iter] + 0.5) ) + (int)(i[iter] + 0.5);
-		p[iter] = cloud->points[k];
-
-		// Controllo se p è un NaN o infinito e lo ritorno se è un valore corretto
-		if ((p[iter].x == std::numeric_limits<float>::quiet_NaN ()) || (p[iter].x == std::numeric_limits<float>::infinity())){
-			std::cout << "\n getNearestPoint - Indice punto = " << k << " - " << p[iter] << "\n";
-			continue;
-		}
-	
-		// altrimenti calcolo l'errore commesso dall'approssimazione e cerco un punto nell'intorno
-		// di p0 che è più vicino e lo ritorno (controllando che non sia NaN o inf)
-		float di = i[iter] - (int)(i[iter] + 0.5);
-		float dj = j[iter] - (int)(j[iter] + 0.5);
-	
-		if ( abs(di) <= abs(dj)){
-			if (di > 0)
-				p[iter] = cloud->points[k + 1];
-			else
-				p[iter] = cloud->points[k - 1];
-		}
-		else {
-			if (dj > 0)
-				p[iter] = cloud->points[k + cloud->width];
-			else
-				p[iter] = cloud->points[k - cloud->width];
-		}
-
-
-		if (!(p[iter].x == std::numeric_limits<float>::quiet_NaN ()) && !(p[iter].x == std::numeric_limits<float>::infinity())){
-			std::cout << "\n getNearestPoint (seconda scelta) - Indice punto = " << k << " - " << p[iter] << "\n";
-			return p[iter];
-		}
+ 
+	// Controllo se p è un NaN o infinito e lo ritorno se è un valore corretto
+	if (!(p.x == std::numeric_limits<float>::quiet_NaN ()) && !(p.x == std::numeric_limits<float>::infinity())){
+		cout << "\n getNearestPoint - Indice punto = " << k << " - " << p << "\n";
+		return p;
 	}
+	
+	// altrimenti calcolo l'errore commesso dall'approssimazione e cerco un punto nell'intorno
+	// di p0 che è più vicino e lo ritorno (controllando che non sia NaN o inf)
+	float di = i - (int)(i + 0.5);
+	float dj = j - (int)(j + 0.5);
+	
+	if ( abs(di) <= abs(dj)){
+		if (di > 0)
+			p = cloud->points[k + 1];
+		else
+			p = cloud->points[k - 1];
+	}
+	else {
+		if (dj > 0)
+			p = cloud->points[k + cloud->width];
+		else
+			p = cloud->points[k - cloud->width];
+	}
+
+	if (!(p.x == std::numeric_limits<float>::quiet_NaN ()) && !(p.x == std::numeric_limits<float>::infinity())){
+		cout << "\n getNearestPoint (seconda scelta) - Indice punto = " << k << " - " << p << "\n";
+		return p;
+	}
+
 }
 
 
@@ -147,8 +145,9 @@ int main(int argc,char **argv) {
 			cout << MarkersA[i].id << endl;
 			for (int v=0 ; v<4 ; v++){
 				cout << "(" << MarkersA[i][v].x << "," << MarkersA[i][v].y << ") - ";
-				x_a[i] = MarkersA[i][v].x;
-				y_a[i] = MarkersA[i][v].y;
+				//centersA[i] = getNearestPoint (cloudA, MarkersA[i][v].x, MarkersA[i][v].y);
+				//x_a[i] = MarkersA[i][v].x;
+				//y_a[i] = MarkersA[i][v].y;
 			}
 			cout << endl;
 			MarkersA[i].draw(InImageA,Scalar(0,0,255),2);
@@ -166,16 +165,23 @@ int main(int argc,char **argv) {
 		}
 		
 		
-
+		//getNearestPoint (cloudA, x_a, y_a);
 
 		//center = getNearestPoint (cloud, mark_x, mark_y);
 
-
-
-
 		//show input with augmented information
-		//cv::imshow("inA",InImageA);
-		//cv::imshow("inB",InImageB);
+		cv::imshow("inA",InImageA);
+		cv::imshow("inB",InImageB);
+
+		/*
+		pcl::visualization::CloudViewer viewer("viewer");
+		viewer.showCloud(cloudA);
+		viewer.runOnVisualizationThreadOnce (viewerOneOff);
+
+		while (!viewer.wasStopped ()) { Sleep(60);  }
+
+		*/
+
 		
 		cv::waitKey(0);//wait for key to be pressed
 		
