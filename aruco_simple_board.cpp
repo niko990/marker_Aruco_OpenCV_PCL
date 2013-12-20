@@ -18,26 +18,26 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl\common\transforms.h>
 
-#define _USE_MATH_DEFINES
+// per ICP
+//#define _USE_MATH_DEFINES
 
 using namespace cv;
 using namespace aruco; 
 using namespace pcl;
 
-/*
+
 Vector<pcl::PointXYZRGBA> CentersA;
 
 // VISUALIZZATORE PCD
 void viewerOneOff (pcl::visualization::PCLVisualizer& viewer) {
-	
+//	
     viewer.setBackgroundColor (1.0, 0.5, 1.0);
 	viewer.setCameraPosition(0,0,-2,0,-1,1,0);
 	viewer.resetCamera();
-	
-	for (int i=0; i < CentersA.size(); i++)
-		viewer.addSphere(CentersA[i], 0.02, 255, 0, 0);
 
-}*/
+
+}
+
 
 // CONVERSIONE DA PCD A IMMAGINE MAT
 cv::Mat pcd2img (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud){
@@ -245,13 +245,14 @@ int main(int argc,char **argv) {
 		pcl::io::savePCDFileASCII ("markers_cloudB.pcd", *markers_cloudB);
 		//pcl::io::savePCDFileASCII ("rotated_markers_cloudB.pcd", *rotatedCloud);
 		
-		/*
+		// VISUALIZZATORE
+		//
 		pcl::visualization::CloudViewer viewer("viewer");
 		viewer.showCloud(cloudA);
 		viewer.runOnVisualizationThreadOnce (viewerOneOff);
 		
-		while (!viewer.wasStopped ()) { Sleep(60);  }
-		*/
+		// while (!viewer.wasStopped ()) { Sleep(60);  }
+		
 		
 
 		
