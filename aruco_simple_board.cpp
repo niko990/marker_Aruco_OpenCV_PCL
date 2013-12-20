@@ -15,10 +15,16 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl\common\transforms.h>
-#include <pcl\registration\transformation_estimation_svd.h>
-#include <pcl\registration\transformation_estimation.h>
-#include <pcl\common\transformation_from_correspondences.h>
 
+#include <pcl\registration\transformation_estimation.h>
+
+#include <pcl\common\transformation_from_correspondences.h>
+#include <pcl\correspondence.h>
+#include <pcl/registration/impl/correspondence_types.hpp>
+
+#include <pcl\registration\transformation_estimation_svd.h>
+#include <pcl\registration\transformation_estimation_lm.h>
+#include <pcl/registration/correspondence_estimation.h>
 
 //using namespace cv;
 using namespace aruco; 
@@ -244,6 +250,43 @@ pcl::PointXYZRGBA getNearestPoint (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud
 
 
 
+// RITORNA L'INDICE DEL PUNTO  3D CORRISPONDENTE, -1 SE è NaN
+int getNearestPointIndice (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud, float i, float j) {
+	
+	int k = (cloud->width * (int)(j + 0.5) ) + (int)(i + 0.5);
+		
+	if (pcl_isfinite (cloud->points[k].x))
+		return k;
+	else
+		return -1;
+}
+
+
+
+
+
+/*
+Eigen::Matrix4f trans_SVD (	pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud_trans_src, 
+                                                        pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud_trans_tgt, 
+                                                        boost::shared_ptr<pcl::Correspondences> cor_trans_ptr 
+                                                        ) 
+        { 
+        Eigen::Matrix4f transform; 
+        PCL_INFO ("Transformation Estimation \n"); 
+        pcl::registration::TransformationEstimationSVD<pcl::PointXYZ, pcl::PointXYZ> transformSVD; 
+        transformSVD.estimateRigidTransformation (*cloud_trans_src, *cloud_trans_tgt, *cor_trans_ptr, transform); 
+        PCL_INFO ("	Transformation Estimation - finished \n"); 
+        return transform; 
+        } 
+
+		*/
+
+
+
+
+
+
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////     ERRORE !!!!!!!!!!!!!!!   FUNZIONE DA SISTEMARE !!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -441,7 +484,7 @@ int main(int argc,char **argv) {
 			
 			for (int v=0 ; v<4 ; v++){
 				//cout << "(" << MarkersA[i][v].x << "," << MarkersA[i][v].y << ") - ";
-				//getNearestPoint (cloudA, markers_cloudA, MarkersA[i][v].x, MarkersA[i][v].y);
+				getNearestPoint (cloudA, markers_cloudA, MarkersA[i][v].x, MarkersA[i][v].y);
 
 				//markersA_struct[i].v1 = getNearestPoint (cloudA, MarkersA[i][v].x, MarkersA[i][v].y);
 			}
@@ -457,7 +500,7 @@ int main(int argc,char **argv) {
 
 			for (int v=0 ; v<4 ; v++){
 				//cout << "(" << MarkersB[i][v].x << "," << MarkersB[i][v].y << ") - ";	
-				//getNearestPoint (cloudB, markers_cloudB, MarkersB[i][v].x, MarkersB[i][v].y);
+				getNearestPoint (cloudB, markers_cloudB, MarkersB[i][v].x, MarkersB[i][v].y);
 
 				//markersB_struct[i].v1 = getNearestPoint (cloudA, MarkersB[i][v].x, MarkersB[i][v].y);
 			}
@@ -490,13 +533,22 @@ int main(int argc,char **argv) {
 
 		// INIZIO PROCEDURA DI TRASFORMAZIONE MEDIANTE LE CORRISPONDENZE TROVATE
 		
-		// Creazione dell'oggetto corrispondenze
-		pcl::TransformationFromCorrespondences correspondences;
+		
+		// CHECK NaN POINTS
+		// if (!pcl_isfinite (scene_descriptors->at (i).descriptor[0]))
+
+		pcl::Correspondences model_scene_corrs; //(new pcl::Correspondences ());
+		
+			
+
 		// Creazione trasformazione SVD
-		pcl::registration::TransformationEstimationSVD <pcl::PointXYZRGBA, pcl::PointXYZRGBA> SVD;
+		//pcl::registration::TransformationEstimationSVD <pcl::PointXYZRGBA, pcl::PointXYZRGBA> SVD;
+		
+		
 		// Creazione matrice di trasformazione
 		Eigen::Matrix4f transformation_matrix;
 
+		
 
 		int idA = 0, idB = 0;
 		for (int i = 0; i < IDcomuni[i]; i++){
@@ -504,10 +556,21 @@ int main(int argc,char **argv) {
 			if (MarkersA[idA].id == MarkersB[idB].id){
 				// trovata corrispondenza tra 2 ID --> aggiungo in ordine i punti dei 4 vertici alle corrispondenze
 				for (int v = 0; v < 4; v++) {
-					correspondences.add ((getNearestPoint3f(cloudA, MarkersA[idA][v].x, MarkersA[idA][v].y)), 
-														 getNearestPoint3f(cloudB, MarkersB[idB][v].x, MarkersB[idB][v].y), 1.0);
+					
+					pcl::Correspondence corr ( getNearestPointIndice(cloudA, MarkersA[idA][v].x, MarkersA[idA][v].y), 
+											   getNearestPointIndice(cloudB, MarkersB[idB][v].x, MarkersB[idB][v].y), 
+											   10);
+
+					// aggiunta della corrispondenza al puntatore delle corrispondenze
+					model_scene_corrs.push_back (corr);
+					cout << "ID = " << MarkersA[idA].id << " - Vertice " << v << " - Corrispondenza aggiunta (indici): " << corr.index_match << " <-> " << corr.index_query << endl;
+					
+					//correspondences.add ((getNearestPoint3f(cloudA, MarkersA[idA][v].x, MarkersA[idA][v].y)), 
+					//									 getNearestPoint3f(cloudB, MarkersB[idB][v].x, MarkersB[idB][v].y), 1.0);
 					//cout << "Aggiunta corrispondenza #" << i << ": ID= " << MarkersA[idA].id << endl;
-					cout << "Aggiunta corrispondenza: ID = " << MarkersA[idA].id << " - Vertice " << v << endl;
+
+
+					//cout << "Aggiunta corrispondenza: ID = " << MarkersA[idA].id << " - Vertice " << v << endl;
 				}
 				// ho trovato una corrispondenza quindi scorro entrambi gli indici
 				idA++;
@@ -529,32 +592,53 @@ int main(int argc,char **argv) {
 			}
 		}
 
+		 std::cout << "Correspondences found: " << model_scene_corrs.size () << std::endl;
+
+
+		/*
 		cout << "\nSono state aggiunte " << correspondences.getNoOfSamples() << " corrispondenze!\n";	
 
 
-
+pcl::registration::TransformationEstimationLM<pcl::PointXYZRGBA, pcl::PointXYZRGBA> LM;
+LM.estimateRigidTransformation (*markers_cloudA, *markers_cloudB, correspondences, transformation_matrix); 
 
 		//transformation_matrix =	correspondences.getTransformation().matrix();
 		// Esecuzione del metodo che scriverà in transformation_matrix i valori per la trasformazione
-		//SVD.estimateRigidTransformation (&markers_cloudA, &markers_cloudB, correspondences, transformation_matrix);
-		//SVD.estimateRigidTransformationSVD (markers_cloudA, markers_cloudB, correspondences, transformation_matrix);
-		//cout << transformation_matrix << endl;
+		SVD.estimateRigidTransformation (markers_cloudA, markers_cloudB, corr, transformation_matrix);
+		cout << transformation_matrix << endl;
 		
+		
+		cout << "corresponcendceeeeeeee\n\n";
+pcl::registration::CorrespondenceEstimation<pcl::PointXYZRGBA, pcl::PointXYZRGBA> est;
+est.setInputCloud(markers_cloudA);
+est.setInputTarget (markers_cloudB);
+pcl::Correspondences all_correspondences;
+// Determine all reciprocal correspondences
+est.determineReciprocalCorrespondences (cmodel_scene_corrs);
 
+	for (size_t c = 0; c < all_correspondences.size (); ++c) { 
+     std::cout << (all_correspondences)[c] << std::endl; 
+}	
+	*/
+		Eigen::Matrix4f trans; 
+		pcl::registration::TransformationEstimationSVD <pcl::PointXYZRGBA,pcl::PointXYZRGBA> trans_est; 
 
-		//Eigen::Matrix4f trans; 
-		//pcl::registration::TransformationEstimationSVD<pcl::PointXYZRGBA,pcl::PointXYZRGBA> trans_est; 
-		//trans_est.estimateRigidTransformation(*markers_cloudA,*markers_cloudB,correspondences, trans); 
+		trans_est.estimateRigidTransformation(*cloudA, *cloudB, model_scene_corrs, trans);
+	
 
+		
+		pcl::PointCloud<pcl::PointXYZRGBA> cloud_temp;
 		/*
-		pcl::PointCloud<pcl::PointXYZRGBA> cloud_out;// (new pcl::PointCloud<pcl::PointXYZRGBA>);	
-		pcl::transformPointCloud (*markers_cloudA, cloud_out, trans);
+		pcl::transformPointCloud (*markers_cloudA, cloud_temp, trans);
 
-		pcl::io::savePCDFileASCII("cloud_out.pcd", cloud_out);*/
+		//cloud_out = cloud_temp;
+		cloud_temp += *markers_cloudB;
+		pcl::io::savePCDFileASCII("markersAB_out.pcd", cloud_temp);
+		*/
 
-
-
-
+		pcl::transformPointCloud (*cloudA, cloud_temp, trans);
+		cloud_temp += *cloudB;
+		pcl::io::savePCDFileASCII("cloudAB_out.pcd", cloud_temp);
 
 
 
