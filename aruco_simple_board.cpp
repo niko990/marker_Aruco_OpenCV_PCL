@@ -26,22 +26,22 @@
 #include <pcl\registration\transformation_estimation_lm.h>
 #include <pcl/registration/correspondence_estimation.h>
 
-//using namespace cv;
+#include <pcl\filters\bilateral.h>
+#include <pcl/surface/mls.h>
+
+
+
 using namespace aruco; 
-//using namespace pcl;
+
+
+// Numero massimo di ID che verranno riconosciuti nelle nuvole (<= numero di ID della board)
+// Il vettore IDcomuni è inizialmente settato a questa dimensione, una volta riconosciuti i marker verrà ridimensionato 
+// secondo il numero di ID che sono stati rilevati e che sono presenti in entrambe le nuvole
+#define ID_COMUNI_SIZE 20
+
+
 
 /*
-struct marker_struct{
-	int id;
-	pcl::PointXYZRGBA v1;
-	pcl::PointXYZRGBA v2;
-	pcl::PointXYZRGBA v3;
-	pcl::PointXYZRGBA v4;
-};*/
-
-/*
-Vector<pcl::PointXYZRGBA> CentersA;
-
 // VISUALIZZATORE PCD
 void viewerOneOff (pcl::visualization::PCLVisualizer& viewer) {
 	
@@ -54,8 +54,9 @@ void viewerOneOff (pcl::visualization::PCLVisualizer& viewer) {
 
 }*/
 
-// CONVERSIONE DA PCD A IMMAGINE MAT
 
+
+// CONVERSIONE DA PCD A IMMAGINE MAT
 cv::Mat pcd2img (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud){
 		cv::Mat test = cv::Mat(cv::Size(cloud->width, cloud->height), CV_8UC3);
 		int i, j;
@@ -250,7 +251,7 @@ pcl::PointXYZRGBA getNearestPoint (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud
 
 
 
-// RITORNA L'INDICE DEL PUNTO  3D CORRISPONDENTE, -1 SE è NaN
+// RITORNA L'INDICE DEL PUNTO  3D CORRISPONDENTE NELLA NUVOLA cloud CON COORDINATE 2D i E j, -1 SE è NaN
 int getNearestPointIndice (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud, float i, float j) {
 	
 	int k = (cloud->width * (int)(j + 0.5) ) + (int)(i + 0.5);
@@ -332,38 +333,14 @@ Eigen::Matrix4f trans_SVD (	pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud_trans_
 */
 
 
-
-
-
-
-
-
-
-int main(int argc,char **argv) {
-	try	{
-		if(argc<4) {cerr<<"USO: pcd_A pcd_B boardConfig.yml [outImage]"<<endl; exit(0);}
-		MarkerDetector MDetectorA, MDetectorB;
-		vector<Marker> MarkersA, MarkersB;
-		BoardConfiguration TheBoardConfig;
-		BoardDetector TheBoardDetector;
-		Board TheBoardDetected;
-		pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloudA (new pcl::PointCloud<pcl::PointXYZRGBA>);
-		pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloudB (new pcl::PointCloud<pcl::PointXYZRGBA>);
-		pcl::PointCloud<pcl::PointXYZRGBA>::Ptr markers_cloudA (new pcl::PointCloud<pcl::PointXYZRGBA>);
-		pcl::PointCloud<pcl::PointXYZRGBA>::Ptr markers_cloudB (new pcl::PointCloud<pcl::PointXYZRGBA>);	
-		cv::Mat InImageA, InImageB;
-		pcl::PassThrough<pcl::PointXYZRGBA> pass;
-		//std::vector<int> IDcomuni ;
-		//int IDcomuni[];
-		
-
-		// LETTURA DEGLI ARGOMENTI IN INPUT
+// FUNZIONE DI CARICAMENTO DELL'INPUT
+int LoadInput(char** argv, BoardConfiguration TheBoardConfig, pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloudA, pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloudB){
 
 		TheBoardConfig.readFromFile(argv[3]);
 		
 		cout << "\nCaricamento nuvola A......";
 		if (pcl::io::loadPCDFile<pcl::PointXYZRGBA> (argv[1], *cloudA) == -1) {
-			PCL_ERROR ("Errore apertura PCD file!\n");
+			PCL_ERROR ("Errore apertura pcd_A file!\n");
 			return (-1);
 		}
 
@@ -377,7 +354,7 @@ int main(int argc,char **argv) {
 
 		cout << "Caricamento nuvola B......";
 		if (pcl::io::loadPCDFile<pcl::PointXYZRGBA> (argv[2], *cloudB) == -1) {
-			PCL_ERROR ("Errore apertura PCD file!\n");
+			PCL_ERROR ("Errore apertura pcd_B file!\n");
 			return (-1);
 		}
 		
@@ -388,6 +365,35 @@ int main(int argc,char **argv) {
 			cout << ("Input cloudB is not organized.\n");
 			return (-1);
 		}
+
+}
+
+
+
+
+
+int main(int argc,char **argv) {
+	try	{
+		if (argc < 4) { cerr << "USO: pcd_A pcd_B boardConfig.yml [outImage]" << endl; exit(0);}
+		MarkerDetector MDetectorA, MDetectorB;
+		vector<Marker> MarkersA, MarkersB;
+		BoardConfiguration TheBoardConfig;
+		BoardDetector TheBoardDetector;
+		Board TheBoardDetected;
+		pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloudA (new pcl::PointCloud<pcl::PointXYZRGBA>);
+		pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloudB (new pcl::PointCloud<pcl::PointXYZRGBA>);
+		pcl::PointCloud<pcl::PointXYZRGBA>::Ptr markers_cloudA (new pcl::PointCloud<pcl::PointXYZRGBA>);
+		pcl::PointCloud<pcl::PointXYZRGBA>::Ptr markers_cloudB (new pcl::PointCloud<pcl::PointXYZRGBA>);	
+		pcl::PointCloud<pcl::PointXYZRGBA> cloud_temp;
+		cv::Mat InImageA, InImageB;
+		pcl::PassThrough<pcl::PointXYZRGBA> pass;
+		int IDcomuni[ID_COMUNI_SIZE];
+		int pos = 0, validID = 0;
+
+		// LETTURA DEGLI ARGOMENTI IN INPUT
+		if (LoadInput (argv, TheBoardConfig, cloudA, cloudB) == -1) { cout << "\nExit!"; exit (0);}
+
+		//TheBoardConfig, cloudA, cloudB
 
 		// Conversione da PCD a immagine per elaborazione con Aruco
 		InImageA = pcd2img(cloudA);
@@ -411,6 +417,73 @@ int main(int argc,char **argv) {
 
 
 
+		// PROVA CON MOVING LAST SQUARE
+
+		/*// Create a KD-Tree
+  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+
+  // Output has the PointNormal type in order to store the normals calculated by MLS
+  pcl::PointCloud<pcl::PointNormal> mls_points;
+
+  // Init object (second point type is for the normals, even if unused)
+  pcl::MovingLeastSquares<pcl::PointXYZ, pcl::PointNormal> mls;
+ 
+  //mls.setComputeNormals (true);
+
+  // Set parameters
+  mls.setInputCloud (*cloudA);
+  mls.setPolynomialFit (true);
+  mls.setSearchMethod (tree);
+  mls.setSearchRadius (0.03);
+
+  // Reconstruct
+  mls.process (mls_points);
+
+  // Save output
+  pcl::io::savePCDFile ("cloudA_MLS.pcd", mls_points);
+  */
+
+
+
+		// FILTRO BILATERAL LAVORA SOLO CON XYZI
+		/*
+		        pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud_cleaned (new pcl::PointCloud<pcl::PointXYZRGBA>); 
+
+        // Create the filtering object 
+        pcl::BilateralFilter<PointXYZRGBA> bf; 
+        bf.setInputCloud(cloudA); 
+        bf.setStdDev(1.0f); 
+        bf.filter(*cloud_cleaned); 
+        
+        pcl::io::savePCDFileASCII ("cloudA_bilateral.pcd", *cloud_cleaned);
+		*/
+
+
+
+		/*
+		//PointCloud<PointXYZRGB>::Ptr cloud (new PointCloud<PointXYZRGB>); 
+ConvertPointsToPCL(P, COLOR, *cloudA); 
+
+pcl::search::KdTree<pcl::PointXYZRGBA>::Ptr tree (new search::KdTree<pcl::PointXYZRGBA>); 
+
+pcl::PointCloud<PointXYZRGBA> mls_points;	
+MovingLeastSquares<pcl::PointXYZRGBA, pcl::PointXYZRGBA> mls; 
+mls.setInputCloud(*cloudA); 
+mls.setPolynomialFit(true); 
+mls.setSearchMethod(tree); 
+mls.setSearchRadius(1.0); 
+mls.process(mls_points); 
+
+PointCloud<pcl::PointXYZRGBA>::Ptr cloud_filtered (new PointCloud<pcl::PointXYZRGBA>); 
+copyPointCloud<pcl::PointXYZRGBA, pcl::PointXYZRGBA>(mls_points, *cloud_filtered); 
+
+ConvertPCLToColorPoints(*cloud_filtered, P, COLOR);
+
+
+
+*/
+
+
 
 
 
@@ -431,12 +504,10 @@ int main(int argc,char **argv) {
 
 
 		// RICERCA DELLE COSSIRPONDENZE DEGLI ID NEI VETTORI MarkersA e MarkersB
-		const int IDcomuni_size = 20;
-		int IDcomuni[IDcomuni_size];
-		int pos = 0, validID = 0;
 
+		
 		// IDcomuni inizializzato a tutti 0
-		for (int i=0; i < IDcomuni_size; i++)
+		for (int i=0; i < ID_COMUNI_SIZE; i++)
 			IDcomuni[i] = 0;
 
 		// Inizio ricerca, gli ID sono ordine crescente
@@ -455,7 +526,7 @@ int main(int argc,char **argv) {
 		//cout << "min (A, B) = " << min(MarkersA.size(), MarkersB.size()) << endl;
 
 		// Tronco il vettore alla lunghezza esatta del totale degli elementi trovati
-		for (int i=0; i < IDcomuni_size ;i++){
+		for (int i=0; i < ID_COMUNI_SIZE ;i++){
 			if (IDcomuni[i] == 0) {
 				IDcomuni[i] = '\0';
 				break;
@@ -519,7 +590,7 @@ int main(int argc,char **argv) {
 		
 
 
-		// Filtraggio delle nuvole di marker per eliminare i punti nulli a 0
+		// Filtraggio delle nuvole di marker per eliminare i punti a 0
 		pass.setInputCloud (markers_cloudA);
 		pass.setFilterFieldName ("z");
 		pass.setFilterLimits (0.0001, 100);
@@ -530,26 +601,14 @@ int main(int argc,char **argv) {
 
 
 
+				// CHECK NaN POINTS
+		// if (!pcl_isfinite (scene_descriptors->at (i).descriptor[0]))
 
 		// INIZIO PROCEDURA DI TRASFORMAZIONE MEDIANTE LE CORRISPONDENZE TROVATE
 		
+		// Oggetto CorrespondenceS che contiene tutte le corrispondenze che saranno trovate
+		pcl::Correspondences model_scene_corrs;
 		
-		// CHECK NaN POINTS
-		// if (!pcl_isfinite (scene_descriptors->at (i).descriptor[0]))
-
-		pcl::Correspondences model_scene_corrs; //(new pcl::Correspondences ());
-		
-			
-
-		// Creazione trasformazione SVD
-		//pcl::registration::TransformationEstimationSVD <pcl::PointXYZRGBA, pcl::PointXYZRGBA> SVD;
-		
-		
-		// Creazione matrice di trasformazione
-		Eigen::Matrix4f transformation_matrix;
-
-		
-
 		int idA = 0, idB = 0;
 		for (int i = 0; i < IDcomuni[i]; i++){
 			cout << "cerco per IDcomuni[" << i << "]" << endl;
@@ -557,11 +616,12 @@ int main(int argc,char **argv) {
 				// trovata corrispondenza tra 2 ID --> aggiungo in ordine i punti dei 4 vertici alle corrispondenze
 				for (int v = 0; v < 4; v++) {
 					
+					// Creazione oggetto Correspondence (singola corrispondenza trovata)
 					pcl::Correspondence corr ( getNearestPointIndice(cloudA, MarkersA[idA][v].x, MarkersA[idA][v].y), 
 											   getNearestPointIndice(cloudB, MarkersB[idB][v].x, MarkersB[idB][v].y), 
 											   10);
 
-					// aggiunta della corrispondenza al puntatore delle corrispondenze
+					// Aggiunta della corrispondenza all'oggetto CorrespondenceS
 					model_scene_corrs.push_back (corr);
 					cout << "ID = " << MarkersA[idA].id << " - Vertice " << v << " - Corrispondenza aggiunta (indici): " << corr.index_match << " <-> " << corr.index_query << endl;
 					
@@ -595,52 +655,50 @@ int main(int argc,char **argv) {
 		 std::cout << "Correspondences found: " << model_scene_corrs.size () << std::endl;
 
 
+		// Creazione delle due matrici di trasformazione (con i metodi SVD e LM)
+		Eigen::Matrix4f transformation_matrix_SVD, transformation_matrix_LM; 
+
+		// Creazione delle trasformazioni con il metodo LM e SVD
+		pcl::registration::TransformationEstimationSVD <pcl::PointXYZRGBA, pcl::PointXYZRGBA> SVD; 
+		pcl::registration::TransformationEstimationLM <pcl::PointXYZRGBA, pcl::PointXYZRGBA> LM;
+
+
+		// Esecuzione delle trasformazioni: scriverà in transformation_matrix_LM e _SVD i valori per la trasformazione
+		LM.estimateRigidTransformation (*cloudA, *cloudB, model_scene_corrs, transformation_matrix_LM); 
+		SVD.estimateRigidTransformation(*cloudA, *cloudB, model_scene_corrs, transformation_matrix_SVD);
+		
+		cout << "Matrice di trasformazione SVD:\n" << transformation_matrix_SVD << endl;
+		cout << "Matrice di trasformazione LM:\n" << transformation_matrix_LM << endl;	
+		
 		/*
-		cout << "\nSono state aggiunte " << correspondences.getNoOfSamples() << " corrispondenze!\n";	
 
-
-pcl::registration::TransformationEstimationLM<pcl::PointXYZRGBA, pcl::PointXYZRGBA> LM;
-LM.estimateRigidTransformation (*markers_cloudA, *markers_cloudB, correspondences, transformation_matrix); 
-
-		//transformation_matrix =	correspondences.getTransformation().matrix();
-		// Esecuzione del metodo che scriverà in transformation_matrix i valori per la trasformazione
-		SVD.estimateRigidTransformation (markers_cloudA, markers_cloudB, corr, transformation_matrix);
-		cout << transformation_matrix << endl;
-		
-		
-		cout << "corresponcendceeeeeeee\n\n";
 pcl::registration::CorrespondenceEstimation<pcl::PointXYZRGBA, pcl::PointXYZRGBA> est;
 est.setInputCloud(markers_cloudA);
 est.setInputTarget (markers_cloudB);
 pcl::Correspondences all_correspondences;
 // Determine all reciprocal correspondences
-est.determineReciprocalCorrespondences (cmodel_scene_corrs);
+est.determineReciprocalCorrespondences (model_scene_corrs);
 
 	for (size_t c = 0; c < all_correspondences.size (); ++c) { 
      std::cout << (all_correspondences)[c] << std::endl; 
 }	
-	*/
-		Eigen::Matrix4f trans; 
-		pcl::registration::TransformationEstimationSVD <pcl::PointXYZRGBA,pcl::PointXYZRGBA> trans_est; 
+	
+*/
 
-		trans_est.estimateRigidTransformation(*cloudA, *cloudB, model_scene_corrs, trans);
+
+		
 	
 
 		
-		pcl::PointCloud<pcl::PointXYZRGBA> cloud_temp;
-		/*
-		pcl::transformPointCloud (*markers_cloudA, cloud_temp, trans);
+		
 
-		//cloud_out = cloud_temp;
-		cloud_temp += *markers_cloudB;
-		pcl::io::savePCDFileASCII("markersAB_out.pcd", cloud_temp);
-		*/
-
-		pcl::transformPointCloud (*cloudA, cloud_temp, trans);
+		pcl::transformPointCloud (*cloudA, cloud_temp, transformation_matrix_SVD);
 		cloud_temp += *cloudB;
-		pcl::io::savePCDFileASCII("cloudAB_out.pcd", cloud_temp);
+		pcl::io::savePCDFileASCII("cloudAB_SVD_out.pcd", cloud_temp);
 
-
+		pcl::transformPointCloud (*cloudA, cloud_temp, transformation_matrix_LM);
+		cloud_temp += *cloudB;
+		pcl::io::savePCDFileASCII("cloudAB_LM_out.pcd", cloud_temp);
 
 
 		/*
