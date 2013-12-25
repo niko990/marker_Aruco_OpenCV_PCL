@@ -1,4 +1,3 @@
-
 aruco124.lib
 opencv_calib3d247.lib
 opencv_contrib247.lib
