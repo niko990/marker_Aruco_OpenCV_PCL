@@ -8,7 +8,6 @@ include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
-add_executable (marker marker.cpp)
 add_executable (aruco_simple_board aruco_simple_board.cpp)
 
-target_link_libraries (marker ${PCL_LIBRARIES})
+target_link_libraries (aruco_simple_board ${PCL_LIBRARIES} vtkHybrid vtkRendering)
